@@ -2,13 +2,24 @@
   "name": "opencode-blablador",
   "version": "0.1.0",
   "description": "Blablador provider for OpenCode with live model discovery",
+  "license": "MIT",
+  "author": "Christian F. Brinkmann",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chrisb09/opencode-blablador.git"
+  },
+  "homepage": "https://github.com/chrisb09/opencode-blablador#readme",
+  "bugs": {
+    "url": "https://github.com/chrisb09/opencode-blablador/issues"
+  },
+  "keywords": ["opencode", "opencode-plugin", "blablador", "rwth", "hpc"],
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
   "files": ["dist", "README.md", "assets"],
   "engines": { "node": ">=20" },
-  "scripts": { "build": "tsc -p tsconfig.json", "test": "bun test", "prepublishOnly": "npm run build" },
+  "scripts": { "build": "tsc -p tsconfig.json", "test": "bun test", "prepack": "npm run build", "prepublishOnly": "npm run build" },
   "dependencies": { "@opencode-ai/plugin": "1.18.18" },
   "devDependencies": { "@types/node": "^22.0.0", "typescript": "^5.0.0" }
 }

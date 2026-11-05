@@ -58,7 +58,16 @@ GPQA Diamond measures graduate-level science questions; Terminal-Bench and DeepS
 
 ## Setup
 
-Add `"opencode-blablador"` to the `plugin` array in your OpenCode configuration. The package must be published or installed where OpenCode can resolve it. Authenticate with `/connect` and select **Blablador API key**, or set `BLABLADOR_API_KEY` in OpenCode's environment. Restart OpenCode after connecting so discovery runs with the new key.
+Add the plugin entry to the `plugin` array in your OpenCode configuration. The package is distributed as a GitHub release asset, not through the npm registry, so no npm account is needed. Use the latest release tarball URL:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["https://github.com/chrisb09/opencode-blablador/releases/latest/download/opencode-blablador.tgz"]
+}
+```
+
+OpenCode installs and caches the tarball with its npm-compatible plugin loader. Pin a specific version by replacing `latest/download` with `download/v0.1.0` (see [releases](https://github.com/chrisb09/opencode-blablador/releases)). Authenticate with `/connect` and select **Blablador API key**, or set `BLABLADOR_API_KEY` in OpenCode's environment. Restart OpenCode after connecting so discovery runs with the new key.
 
 Choose a discovered `blablador/<short-id>` in the model picker, for example `blablador/Qwen3.8-Flash-Next-NVFP4`. The picker shows `Qwen3.8-Flash-Next-NVFP4 (Blablador)` while requests use the exact ID advertised by Blablador. Existing sessions and default model settings using the old IDs need to select the new IDs. Discovery makes one request with a five-second timeout and no retries. Failure, including invalid credentials or an unavailable endpoint, produces a sanitized warning; missing credentials are quiet. When discovery is empty or unavailable and no models are configured, the plugin registers a `Kimi-K3-1M` bootstrap with the published API ID `99 - Kimi-K3-1M - our best (and slowest) model as of August 2026` so the provider appears in `/connect`. This API ID may be stale and is intended for authentication only; it does not guarantee inference will work. Successful discovery replaces the bootstrap with live IDs. This plugin does not store keys itself: OpenCode manages login credentials. Since the plugin SDK does not expose stored credentials during configuration, discovery reads OpenCode's existing `auth.json` (or `OPENCODE_AUTH_CONTENT`) at runtime. A configured `provider.blablador.options.apiKey` takes precedence, followed by OpenCode's stored key and then `BLABLADOR_API_KEY`.
 
