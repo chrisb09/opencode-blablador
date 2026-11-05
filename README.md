@@ -21,6 +21,10 @@ These measurements are for the Blablador endpoints, not the upstream model provi
 | `Muse-Spark-Open-816B-A42B` | 542 ms | 8.52 tokens/s |
 | `Swift-1.5-Qwen3.8-27B` | 119 ms | 45.21 tokens/s |
 
+![Column chart of output speed for all ten models](assets/throughput.svg)
+
+![Column chart of time to first token for all ten models, using a logarithmic axis](assets/ttft.svg)
+
 Measurements were made in November 2026 with one successful streaming request per model, sent sequentially to `/v1/chat/completions`. Each used the prompt "Explain how a hash table works, including collisions and resizing, in clear detail.", temperature 0, and a limit of 128 output tokens. All streams reached that limit. TTFT is request start to the first nonempty content or reasoning chunk; output speed is reported completion tokens divided by the time between first and last nonempty output chunks. Speed is approximate: that interval excludes the first chunk's arrival while the token count includes it, and reasoning tokens can be included. These are single samples, not averages or guarantees; queueing, network conditions, output length, and chunking affect the results. In particular, the high GLM TTFT needs repeat measurements.
 
 ### Published Capability Scores
@@ -39,6 +43,10 @@ Scores below are **not measured against these Blablador endpoints**. They are pu
 | `DeepSeek-V4.1-Flash-HZDR` | No deployment-matched score found | The endpoint does not report a checkpoint root, so its revision and quantization are unknown. |
 | `Muse-Spark-Open-816B-A42B` | GPQA Diamond 89.0; Terminal-Bench 2.1 76.4; DeepSWE 1.1 60 | [Meta](https://huggingface.co/meta-models/Muse-Spark-Open-816B-A42B), xhigh reasoning. Blablador precision and checkpoint revision are unknown. |
 | `Swift-1.5-Qwen3.8-27B` | GPQA Diamond 88.59%; Terminal-Bench 2.1 72.13% | [UkisAI](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27b#evaluation), BF16 and five-seed/trial evaluation. Blablador's path names Swift 1.5, but its precision and revision are unknown. |
+
+![Column chart of five published Terminal-Bench 2.1 scores, not a controlled comparison](assets/terminal-bench.svg)
+
+The chart shows only reported Terminal-Bench 2.1 values. They come from different sources, harnesses and precision settings and are **not a controlled comparison**; see the table above for sources and checkpoint qualifications. Qwen3.8-27B is not a separately verified FP8 result, and MiMo Flash is a family result, not necessarily Flash-RL.
 
 GPQA Diamond measures graduate-level science questions; Terminal-Bench and DeepSWE evaluate agentic coding; SWE-bench Verified measures resolved software issues; and IFBench evaluates instruction following. Even within one benchmark, different versions, agents, reasoning settings, and quantizations can change the result. Scores are publisher-reported except for the two explicitly marked independent leaderboard entries; the leaderboard can change over time.
 

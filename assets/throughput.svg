@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="730" viewBox="0 0 1000 730" role="img" aria-labelledby="title desc">
+  <title id="title">Live endpoint output speed</title>
+  <desc id="desc">Output speed in tokens per second for ten Blablador models. One streaming sample per model; see the README table for exact values and methodology.</desc>
+  <rect width="1000" height="730" fill="#f8fafc"/>
+  <text x="55" y="43" fill="#102a43" font-family="sans-serif" font-size="27" font-weight="700">Output speed</text>
+  <text x="55" y="70" fill="#486581" font-family="sans-serif" font-size="16">Blablador endpoints · one streaming sample per model · higher is better</text>
+  <text x="80" y="104" fill="#243b53" font-family="sans-serif" font-size="15" font-weight="700">Output speed (tokens/s)</text>
+  <g stroke="#d9e2ec" stroke-width="1">
+    <path d="M80 120H970 M80 170H970 M80 220H970 M80 270H970 M80 320H970 M80 370H970 M80 420H970"/>
+  </g>
+  <g fill="#486581" font-family="sans-serif" font-size="14" text-anchor="end">
+    <text x="70" y="425">0</text><text x="70" y="375">50</text><text x="70" y="325">100</text><text x="70" y="275">150</text><text x="70" y="225">200</text><text x="70" y="175">250</text><text x="70" y="125">300</text>
+  </g>
+  <path d="M80 120V420H970" fill="none" stroke="#627d98"/>
+  <g fill="#167d8d">
+    <rect x="103" y="321.34" width="48" height="98.66"/><rect x="191" y="323.58" width="48" height="96.42"/><rect x="279" y="376.99" width="48" height="43.01"/><rect x="367" y="389.35" width="48" height="30.65"/><rect x="455" y="285.92" width="48" height="134.08"/><rect x="543" y="406.21" width="48" height="13.79"/><rect x="631" y="413.26" width="48" height="6.74"/><rect x="719" y="152.08" width="48" height="267.92"/><rect x="807" y="411.48" width="48" height="8.52"/><rect x="895" y="374.79" width="48" height="45.21"/>
+  </g>
+  <g fill="#102a43" font-family="sans-serif" font-size="14" font-weight="700" text-anchor="middle">
+    <text x="127" y="313">98.66</text><text x="215" y="315">96.42</text><text x="303" y="369">43.01</text><text x="391" y="381">30.65</text><text x="479" y="278">134.08</text><text x="567" y="398">13.79</text><text x="655" y="405">6.74</text><text x="743" y="144">267.92</text><text x="831" y="403">8.52</text><text x="919" y="367">45.21</text>
+  </g>
+  <g fill="#243b53" font-family="sans-serif" font-size="14" text-anchor="end">
+    <text transform="translate(127 438) rotate(-55)">GPT-OSS-120B</text><text transform="translate(215 438) rotate(-55)">Qwen3.8-Flash-Next-NVFP4</text><text transform="translate(303 438) rotate(-55)">Qwen3.8-27B-FP8</text><text transform="translate(391 438) rotate(-55)">DeepSeek-V4.1-Flash-1017</text><text transform="translate(479 438) rotate(-55)">MiMo-V2.6-Flash-RL</text><text transform="translate(567 438) rotate(-55)">GLM-5.3-Flash</text><text transform="translate(655 438) rotate(-55)">Kimi-K3-1M</text><text transform="translate(743 438) rotate(-55)">DeepSeek-V4.1-Flash-HZDR</text><text transform="translate(831 438) rotate(-55)">Muse-Spark-Open-816B-A42B</text><text transform="translate(919 438) rotate(-55)">Swift-1.5-Qwen3.8-27B</text>
+  </g>
+  <text x="55" y="710" fill="#486581" font-family="sans-serif" font-size="14">Approximate speed; see the table and methodology for measurement limitations.</text>
+</svg>
