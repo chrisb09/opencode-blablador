@@ -1,0 +1,14 @@
+{
+  "name": "opencode-blablador",
+  "version": "0.1.0",
+  "description": "Blablador provider for OpenCode with live model discovery",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "files": ["dist", "README.md"],
+  "engines": { "node": ">=20" },
+  "scripts": { "build": "tsc -p tsconfig.json", "test": "bun test", "prepublishOnly": "npm run build" },
+  "dependencies": { "@opencode-ai/plugin": "1.18.18" },
+  "devDependencies": { "@types/node": "^22.0.0", "typescript": "^5.0.0" }
+}
