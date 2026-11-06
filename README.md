@@ -58,6 +58,25 @@ The chart shows only reported scores for the exact benchmark versions in its leg
 
 GPQA Diamond measures graduate-level science questions; Terminal-Bench and DeepSWE evaluate agentic coding; SWE-bench Verified measures resolved software issues; and IFBench evaluates instruction following. Even within one benchmark, different versions, agents, reasoning settings, and quantizations can change the result. Scores are model-publisher-reported unless attributed to an evaluator in the tables; leaderboard results can change over time.
 
+### Model Limits
+
+Context and output limits the plugin currently generates for each model, computed with `modelLimit` from the endpoint's advertised `max_model_len` (November 2026 snapshot):
+
+| Model | Context | Output limit | Compaction input budget | Output basis |
+| --- | ---: | ---: | ---: | --- |
+| `GPT-OSS-120B` | 131,072 | 26,214 | 104,857 | Upstream reference (131,072), reduced by the 20% policy |
+| `Qwen3.8-Flash-Next-NVFP4` | 262,144 | 32,768 | 209,715 | Plugin fallback |
+| `Qwen3.8-27B-FP8` | 262,144 | 32,768 | 209,715 | Plugin fallback |
+| `DeepSeek-V4.1-Flash-1017` | 1,048,576 | 65,536 | 838,860 | Upstream reference (384K), capped at 65,536 |
+| `MiMo-V2.6-Flash-RL` | 1,048,576 | 32,768 | 838,860 | Plugin fallback |
+| `GLM-5.3-Flash` | 1,048,576 | 32,768 | 838,860 | Plugin fallback |
+| `Kimi-K3-1M` | 1,048,576 | 65,536 | 838,860 | Upstream reference, capped at 65,536 |
+| `DeepSeek-V4.1-Flash-HZDR` | 8,192 (fallback) | 1,638 | — | Fallback context and output |
+| `Muse-Spark-Open-816B-A42B` | 8,192 (fallback) | 1,638 | — | Fallback context and output |
+| `Swift-1.5-Qwen3.8-27B` | 262,144 | 32,768 | 209,715 | Plugin fallback |
+
+The context values come from the endpoint's advertised `max_model_len`; `DeepSeek-V4.1-Flash-HZDR` advertises separate `max_input_tokens` and `max_output_tokens` instead and `Muse-Spark-Open-816B-A42B` was absent from the last listing, so both use the 8,192 fallback. Output limits are plugin policy caps, not verified server maxima: the reference values in the previous section are reduced where needed by the 65,536 and 20%-of-context caps. The input budget is 80% of context for contexts of at least 16,384 and controls when OpenCode compacts. An explicit per-model `limit` overrides all of these values. Blablador can change the catalog at any time; check `/v1/models` for current values.
+
 ## Setup
 
 Add the plugin entry to the `plugin` array in your OpenCode configuration. The package is distributed as a GitHub release asset, not through the npm registry, so no npm account is needed. Use the latest release tarball URL:
@@ -69,7 +88,7 @@ Add the plugin entry to the `plugin` array in your OpenCode configuration. The p
 }
 ```
 
-OpenCode installs and caches the tarball with its npm-compatible plugin loader. Pin a specific version by replacing `latest/download` with `download/v0.1.0` (see [releases](https://github.com/chrisb09/opencode-blablador/releases)). Authenticate with `/connect` and select **Blablador API key**, or set `BLABLADOR_API_KEY` in OpenCode's environment. Restart OpenCode after connecting so discovery runs with the new key.
+OpenCode installs and caches the tarball with its npm-compatible plugin loader. Pin a specific version by replacing `latest/download` with `download/v0.2.0` (see [releases](https://github.com/chrisb09/opencode-blablador/releases)). Authenticate with `/connect` and select **Blablador API key**, or set `BLABLADOR_API_KEY` in OpenCode's environment. Restart OpenCode after connecting so discovery runs with the new key.
 
 Choose a discovered `blablador/<short-id>` in the model picker, for example `blablador/Qwen3.8-Flash-Next-NVFP4`. The picker shows `Qwen3.8-Flash-Next-NVFP4 (Blablador)` while requests use the exact ID advertised by Blablador. Existing sessions and default model settings using the old IDs need to select the new IDs. Discovery makes one request with a five-second timeout and no retries. Failure, including invalid credentials or an unavailable endpoint, produces a sanitized warning; missing credentials are quiet. When discovery is empty or unavailable and no models are configured, the plugin registers a `Kimi-K3-1M` bootstrap with the published API ID `99 - Kimi-K3-1M - our best (and slowest) model as of August 2026` so the provider appears in `/connect`. This API ID may be stale and is intended for authentication only; it does not guarantee inference will work. Successful discovery replaces the bootstrap with live IDs. This plugin does not store keys itself: OpenCode manages login credentials. Since the plugin SDK does not expose stored credentials during configuration, discovery reads OpenCode's existing `auth.json` (or `OPENCODE_AUTH_CONTENT`) at runtime. A configured `provider.blablador.options.apiKey` takes precedence, followed by OpenCode's stored key and then `BLABLADOR_API_KEY`.
 
