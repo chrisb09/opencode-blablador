@@ -17,6 +17,27 @@ const SELECTED_MODELS: Record<string, string> = {
   "Swift-Qwen3.8-27b": "Swift-1.5-Qwen3.8-27B",
 };
 
+export function modelLimit(alias: string, context: number, advertised?: unknown) {
+  const defaults: Record<string, number> = {
+    "Kimi-K3-1M": 1048576,
+    "DeepSeek-V4.1-Flash-1017": 384000,
+    "GPT-OSS-120B": 131072,
+  };
+  const output = Math.min(
+    typeof advertised === "number" && Number.isSafeInteger(advertised) && advertised > 0
+      ? advertised : defaults[alias] ?? 32768,
+    65536,
+    Math.max(1, Math.floor(context * 0.2)),
+    context - 1,
+  );
+  // v1 subtracts at most 20k from input for its default compaction reserve.
+  const reserve = Math.min(20000, 32000, output);
+  const input = Math.min(Math.floor(context * 0.8), context - output + reserve);
+  return context >= 16384 || output > reserve
+    ? { context, input: Math.max(1, input), output }
+    : { context, output };
+}
+
 export async function discoverModels(baseURL: string, apiKey: string, request = fetch) {
   const response = await request(`${baseURL.replace(/\/+$/, "")}/models`, {
     headers: { Authorization: `Bearer ${apiKey}` },
@@ -28,7 +49,7 @@ export async function discoverModels(baseURL: string, apiKey: string, request = 
   if (!body || typeof body !== "object" || !("data" in body) || !Array.isArray(body.data)) {
     throw new Error("Invalid Blablador model listing");
   }
-  const models: Record<string, { id: string; name: string; tool_call: boolean; limit: { context: number; output: number } }> = Object.create(null);
+  const models: Record<string, { id: string; name: string; tool_call: boolean; limit: { context: number; input?: number; output: number } }> = Object.create(null);
   for (const item of body.data) {
     if (!item || typeof item !== "object" || typeof item.id !== "string") continue;
     const id = item.id;
@@ -36,7 +57,7 @@ export async function discoverModels(baseURL: string, apiKey: string, request = 
     if (!alias) continue;
     const context = typeof item.max_model_len === "number" && Number.isSafeInteger(item.max_model_len) && item.max_model_len > 1
       ? item.max_model_len : 8192;
-    models[alias] = { id, name: `${alias} (Blablador)`, tool_call: true, limit: { context, output: Math.min(1024, context - 1) } };
+    models[alias] = { id, name: `${alias} (Blablador)`, tool_call: true, limit: modelLimit(alias, context, item.max_output_tokens) };
   }
   return models;
 }

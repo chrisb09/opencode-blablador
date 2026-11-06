@@ -2,6 +2,8 @@
 
 OpenCode plugin for the OpenAI-compatible Blablador API. It discovers a selected set of models from `/v1/models` on startup and gives them short OpenCode IDs while preserving their advertised API IDs.
 
+This plugin targets OpenCode v1. **OpenCode v2 is not supported.** A separate v2 plugin would need to implement the v2 plugin contract and catalog transformations for discovery and model limits; the v1 request hooks used here are not available there. In the v2 runtime inspected, catalog output limits do not reliably set the request cap for OpenAI-compatible chat, so equivalent behavior also needs a supported request-generation hook or a runtime change. This is a plan, not shipped compatibility.
+
 ## Model Performance
 
 ### Live Endpoint Measurements
@@ -73,7 +75,18 @@ Choose a discovered `blablador/<short-id>` in the model picker, for example `bla
 
 The default endpoint is `https://api.blablador.fz-juelich.de/v1`. An existing `provider.blablador` configuration, including `options.baseURL`, models and settings, is preserved and takes precedence. Changing the base URL sends the discovery credential to that URL; only configure a trusted HTTPS endpoint.
 
-Discovery includes only the selected model IDs listed in `src/models.ts`; a model whose advertised ID changes will not be included until the selection is updated. Explicitly configured models are still preserved, and settings for a selected short ID override its discovered metadata. A valid integer `max_model_len` greater than one sets the context limit; otherwise it defaults to 8192 tokens. Output is capped at 1024 tokens and strictly below context. Tool calling is enabled by default for all models, but support is not verified for every model; configure `tool_call: false` explicitly for models that do not support it. Other defaults are conservative: text-only, no reasoning. No pricing, vision or reasoning capabilities are inferred.
+Discovery includes only the selected model IDs listed in `src/models.ts`; a model whose advertised ID changes will not be included until the selection is updated. Explicitly configured models are still preserved, and settings for a selected short ID override its discovered metadata. A valid integer `max_model_len` greater than one sets the context limit; otherwise it defaults to 8192 tokens. For output, a positive safe integer `max_output_tokens` is used as the starting value; otherwise the plugin uses these reference values, not verified deployment maxima:
+
+- Kimi K3: 1,048,576, from the [Kimi API documentation](https://platform.kimi.ai/docs/guide/kimi-k3-quickstart.md).
+- DeepSeek V4.1 Flash 1017: 384,000 (384K), based on [DeepSeek's API documentation](https://api-docs.deepseek.com/quick_start/pricing.md).
+- GPT-OSS-120B: 131,072, from [OpenAI's model page](https://platform.openai.com/docs/models/gpt-oss-120b).
+- Other selected models, including DeepSeek V4.1 Flash HZDR: 32,768, a plugin fallback rather than a published maximum.
+
+The generated output limit is the minimum of that starting value, 65,536, 20% of context rounded down (at least one), and context minus one. These are plugin policy caps, not verified Blablador deployment limits. Servers may enforce lower limits and reasoning may consume output tokens. An explicit OpenCode per-model `limit` overrides the generated limits and can change this cap; specify `context`, `output`, and optionally `input` together. For Blablador only, the `chat.params` hook replaces OpenCode's usual 32,000-token request default with the model output limit (bounded below context), preserves an unset or lower non-default request value, and caps a higher value at the model limit. An explicit positive integer `OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX` leaves the hook's request value unchanged. Other providers are unaffected.
+
+For generated limits, the input budget is at most 80% of context for contexts of at least 16384, and is reduced further when needed to account for output beyond OpenCode v1's default compaction reserve. In OpenCode 1.18.18, the input-budget threshold subtracts a default reserve of up to 20,000 tokens (itself subject to the 32,000 global output cap). Small contexts without an input budget use the context minus output threshold. These are local compaction policies, not claims about server input limits. Explicit model limits, a global output override and custom `compaction.reserved` can change the assumptions and are not adjusted, so compaction cannot be guaranteed with explicit settings. Compaction also depends on reported usage and being enabled, may lose detail, and cannot prevent every oversized request.
+
+Tool calling is enabled by default for all models, but support is not verified for every model; configure `tool_call: false` explicitly for models that do not support it. Other defaults are conservative: text-only, no reasoning. No pricing, vision or reasoning capabilities are inferred.
 
 ## Development
 

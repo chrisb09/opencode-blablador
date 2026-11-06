@@ -2,7 +2,7 @@ import type { Plugin } from "@opencode-ai/plugin";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { discoverModels, DiscoveryHttpError } from "./models.js";
+import { discoverModels, DiscoveryHttpError, modelLimit } from "./models.js";
 
 const BASE_URL = "https://api.blablador.fz-juelich.de/v1";
 const BOOTSTRAP_ID = "99 - Kimi-K3-1M - our best (and slowest) model as of August 2026";
@@ -47,7 +47,7 @@ const plugin: Plugin = async () => ({
       if (discovered[id]) models[id] = { ...discovered[id], ...model };
     }
     if (Object.keys(models).length === 0) {
-      models["Kimi-K3-1M"] = { id: BOOTSTRAP_ID, name: "Kimi-K3-1M (Blablador)", tool_call: true, limit: { context: 8192, output: 1024 } };
+      models["Kimi-K3-1M"] = { id: BOOTSTRAP_ID, name: "Kimi-K3-1M (Blablador)", tool_call: true, limit: modelLimit("Kimi-K3-1M", 8192) };
     }
     cfg.provider.blablador = {
       name: "Blablador",
@@ -57,6 +57,16 @@ const plugin: Plugin = async () => ({
       options: { baseURL, ...options },
       models,
     };
+  },
+  "chat.params": async ({ model }, output) => {
+    const globalMax = Number(process.env.OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX);
+    if (model.providerID !== "blablador" || (Number.isInteger(globalMax) && globalMax > 0)) return;
+    if (output.maxOutputTokens === undefined) return;
+    const { context, output: limit } = model.limit;
+    if (!Number.isSafeInteger(limit) || limit <= 0) return;
+    const desired = Number.isSafeInteger(context) && context > 1 ? Math.min(limit, context - 1) : limit;
+    // Preserve a lower cap from another plugin, except OpenCode's standard default.
+    output.maxOutputTokens = output.maxOutputTokens === 32000 ? desired : Math.min(output.maxOutputTokens, desired);
   },
 });
 
