@@ -17,6 +17,30 @@ const SELECTED_MODELS: Record<string, string> = {
   "Swift-Qwen3.8-27b": "Swift-1.5-Qwen3.8-27B",
 };
 
+const VISION_MODELS = new Set([
+  "Qwen3.8-Flash-Next-NVFP4",
+  "Qwen3.8-27B-FP8",
+  "DeepSeek-V4.1-Flash-1017",
+  "MiMo-V2.6-Flash-RL",
+  "GLM-5.3-Flash",
+  "DeepSeek-V4.1-Flash-HZDR",
+  "Muse-Spark-Open-816B-A42B",
+  "Swift-1.5-Qwen3.8-27B",
+]);
+
+type DiscoveredModel = {
+  id: string;
+  name: string;
+  tool_call: boolean;
+  attachment?: boolean;
+  modalities?: { input: ("text" | "image")[]; output: "text"[] };
+  limit: { context: number; input?: number; output: number };
+};
+
+function tokenLimit(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 1 ? value : undefined;
+}
+
 export function modelLimit(alias: string, context: number, advertised?: unknown) {
   const defaults: Record<string, number> = {
     "Kimi-K3-1M": 1048576,
@@ -49,15 +73,19 @@ export async function discoverModels(baseURL: string, apiKey: string, request = 
   if (!body || typeof body !== "object" || !("data" in body) || !Array.isArray(body.data)) {
     throw new Error("Invalid Blablador model listing");
   }
-  const models: Record<string, { id: string; name: string; tool_call: boolean; limit: { context: number; input?: number; output: number } }> = Object.create(null);
+  const models: Record<string, DiscoveredModel> = Object.create(null);
   for (const item of body.data) {
     if (!item || typeof item !== "object" || typeof item.id !== "string") continue;
     const id = item.id;
     const alias = Object.hasOwn(SELECTED_MODELS, id) ? SELECTED_MODELS[id] : undefined;
     if (!alias) continue;
-    const context = typeof item.max_model_len === "number" && Number.isSafeInteger(item.max_model_len) && item.max_model_len > 1
-      ? item.max_model_len : 8192;
-    models[alias] = { id, name: `${alias} (Blablador)`, tool_call: true, limit: modelLimit(alias, context, item.max_output_tokens) };
+    const context = tokenLimit(item.max_model_len) ?? tokenLimit(item.max_input_tokens) ?? 8192;
+    const model: DiscoveredModel = { id, name: `${alias} (Blablador)`, tool_call: true, limit: modelLimit(alias, context, item.max_output_tokens) };
+    if (VISION_MODELS.has(alias)) {
+      model.attachment = true;
+      model.modalities = { input: ["text", "image"], output: ["text"] };
+    }
+    models[alias] = model;
   }
   return models;
 }

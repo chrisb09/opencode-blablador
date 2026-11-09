@@ -60,7 +60,7 @@ GPQA Diamond measures graduate-level science questions; Terminal-Bench and DeepS
 
 ### Model Limits
 
-Context and output limits the plugin currently generates for each model, computed with `modelLimit` from the endpoint's advertised `max_model_len` (November 2026 snapshot):
+Context and output limits the plugin currently generates for each model, computed with `modelLimit` from the endpoint's advertised `max_model_len` or `max_input_tokens` (November 2026 snapshot):
 
 | Model | Context | Output limit | Compaction input budget | Output basis |
 | --- | ---: | ---: | ---: | --- |
@@ -71,11 +71,30 @@ Context and output limits the plugin currently generates for each model, compute
 | `MiMo-V2.6-Flash-RL` | 1,048,576 | 32,768 | 838,860 | Plugin fallback |
 | `GLM-5.3-Flash` | 1,048,576 | 32,768 | 838,860 | Plugin fallback |
 | `Kimi-K3-1M` | 1,048,576 | 65,536 | 838,860 | Upstream reference, capped at 65,536 |
-| `DeepSeek-V4.1-Flash-HZDR` | 8,192 (fallback) | 1,638 | — | Fallback context and output |
-| `Muse-Spark-Open-816B-A42B` | 8,192 (fallback) | 1,638 | — | Fallback context and output |
+| `DeepSeek-V4.1-Flash-HZDR` | 1,048,576 | 65,536 | 838,860 | Advertised `max_output_tokens` (1,048,576), capped at 65,536 |
+| `Muse-Spark-Open-816B-A42B` | 1,048,576 | 32,768 | 838,860 | Plugin fallback |
 | `Swift-1.5-Qwen3.8-27B` | 262,144 | 32,768 | 209,715 | Plugin fallback |
 
-The context values come from the endpoint's advertised `max_model_len`; `DeepSeek-V4.1-Flash-HZDR` advertises separate `max_input_tokens` and `max_output_tokens` instead and `Muse-Spark-Open-816B-A42B` was absent from the last listing, so both use the 8,192 fallback. Output limits are plugin policy caps, not verified server maxima: the reference values in the previous section are reduced where needed by the 65,536 and 20%-of-context caps. The input budget is 80% of context for contexts of at least 16,384 and controls when OpenCode compacts. An explicit per-model `limit` overrides all of these values. Blablador can change the catalog at any time; check `/v1/models` for current values.
+The context values come from the endpoint's advertised `max_model_len`, falling back to `max_input_tokens` for OpenAI-style entries such as `DeepSeek-V4.1-Flash-HZDR`. Output limits are plugin policy caps, not verified server maxima: the reference values in the previous section are reduced where needed by the 65,536 and 20%-of-context caps. The input budget is 80% of context for contexts of at least 16,384 and controls when OpenCode compacts. An explicit per-model `limit` overrides all of these values. Blablador can change the catalog at any time; check `/v1/models` for current values.
+
+### Image Input
+
+The plugin sets `attachment: true` and input modalities `text`/`image` only for models verified to accept images through the Blablador endpoint:
+
+| Model | Image input |
+| --- | --- |
+| `Qwen3.8-Flash-Next-NVFP4` | Yes |
+| `Qwen3.8-27B-FP8` | Yes |
+| `DeepSeek-V4.1-Flash-1017` | Yes |
+| `MiMo-V2.6-Flash-RL` | Yes (weaker on blank images) |
+| `GLM-5.3-Flash` | Yes |
+| `DeepSeek-V4.1-Flash-HZDR` | Yes |
+| `Muse-Spark-Open-816B-A42B` | Yes |
+| `Swift-1.5-Qwen3.8-27B` | Yes |
+| `GPT-OSS-120B` | No |
+| `Kimi-K3-1M` | Unverified (requests timed out; kept text-only) |
+
+The list comes from live endpoint tests with digit and blank images, not from provider documentation. Other Blablador models that accepted images in the same tests include `MedGemma`, `alias-ocr`, `Qwen3.8-27B` (90), `Qwen3.8-Flash-Next-125B-AWQ-W4A16`, `HyperArete-27B`, `MiMo-V2.6-Pro-RL`, and `Mistral 4 Large`; `Aleph Kolibri`, `Hydrogen 1.0`, `EVE-Instruct`, and `HyperQwen-27B` rejected them. An explicit per-model `attachment` or `modalities` setting overrides the discovered capability.
 
 ## Setup
 
@@ -88,24 +107,24 @@ Add the plugin entry to the `plugin` array in your OpenCode configuration. The p
 }
 ```
 
-OpenCode installs and caches the tarball with its npm-compatible plugin loader. Pin a specific version by replacing `latest/download` with `download/v0.2.0` (see [releases](https://github.com/chrisb09/opencode-blablador/releases)). Authenticate with `/connect` and select **Blablador API key**, or set `BLABLADOR_API_KEY` in OpenCode's environment. Restart OpenCode after connecting so discovery runs with the new key.
+OpenCode installs and caches the tarball with its npm-compatible plugin loader. Pin a specific version by replacing `latest/download` with `download/v0.3.0` (see [releases](https://github.com/chrisb09/opencode-blablador/releases)). Authenticate with `/connect` and select **Blablador API key**, or set `BLABLADOR_API_KEY` in OpenCode's environment. Restart OpenCode after connecting so discovery runs with the new key.
 
 Choose a discovered `blablador/<short-id>` in the model picker, for example `blablador/Qwen3.8-Flash-Next-NVFP4`. The picker shows `Qwen3.8-Flash-Next-NVFP4 (Blablador)` while requests use the exact ID advertised by Blablador. Existing sessions and default model settings using the old IDs need to select the new IDs. Discovery makes one request with a five-second timeout and no retries. Failure, including invalid credentials or an unavailable endpoint, produces a sanitized warning; missing credentials are quiet. When discovery is empty or unavailable and no models are configured, the plugin registers a `Kimi-K3-1M` bootstrap with the published API ID `99 - Kimi-K3-1M - our best (and slowest) model as of August 2026` so the provider appears in `/connect`. This API ID may be stale and is intended for authentication only; it does not guarantee inference will work. Successful discovery replaces the bootstrap with live IDs. This plugin does not store keys itself: OpenCode manages login credentials. Since the plugin SDK does not expose stored credentials during configuration, discovery reads OpenCode's existing `auth.json` (or `OPENCODE_AUTH_CONTENT`) at runtime. A configured `provider.blablador.options.apiKey` takes precedence, followed by OpenCode's stored key and then `BLABLADOR_API_KEY`.
 
 The default endpoint is `https://api.blablador.fz-juelich.de/v1`. An existing `provider.blablador` configuration, including `options.baseURL`, models and settings, is preserved and takes precedence. Changing the base URL sends the discovery credential to that URL; only configure a trusted HTTPS endpoint.
 
-Discovery includes only the selected model IDs listed in `src/models.ts`; a model whose advertised ID changes will not be included until the selection is updated. Explicitly configured models are still preserved, and settings for a selected short ID override its discovered metadata. A valid integer `max_model_len` greater than one sets the context limit; otherwise it defaults to 8192 tokens. For output, a positive safe integer `max_output_tokens` is used as the starting value; otherwise the plugin uses these reference values, not verified deployment maxima:
+Discovery includes only the selected model IDs listed in `src/models.ts`; a model whose advertised ID changes will not be included until the selection is updated. Explicitly configured models are still preserved, and settings for a selected short ID override its discovered metadata. A valid integer `max_model_len` greater than one sets the context limit, falling back to a valid `max_input_tokens` greater than one and then to 8192 tokens. For output, a positive safe integer `max_output_tokens` is used as the starting value; otherwise the plugin uses these reference values, not verified deployment maxima:
 
 - Kimi K3: 1,048,576, from the [Kimi API documentation](https://platform.kimi.ai/docs/guide/kimi-k3-quickstart.md).
 - DeepSeek V4.1 Flash 1017: 384,000 (384K), based on [DeepSeek's API documentation](https://api-docs.deepseek.com/quick_start/pricing.md).
 - GPT-OSS-120B: 131,072, from [OpenAI's model page](https://platform.openai.com/docs/models/gpt-oss-120b).
-- Other selected models, including DeepSeek V4.1 Flash HZDR: 32,768, a plugin fallback rather than a published maximum.
+- Other selected models: 32,768, a plugin fallback rather than a published maximum.
 
 The generated output limit is the minimum of that starting value, 65,536, 20% of context rounded down (at least one), and context minus one. These are plugin policy caps, not verified Blablador deployment limits. Servers may enforce lower limits and reasoning may consume output tokens. An explicit OpenCode per-model `limit` overrides the generated limits and can change this cap; specify `context`, `output`, and optionally `input` together. For Blablador only, the `chat.params` hook replaces OpenCode's usual 32,000-token request default with the model output limit (bounded below context), preserves an unset or lower non-default request value, and caps a higher value at the model limit. An explicit positive integer `OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX` leaves the hook's request value unchanged. Other providers are unaffected.
 
 For generated limits, the input budget is at most 80% of context for contexts of at least 16384, and is reduced further when needed to account for output beyond OpenCode v1's default compaction reserve. In OpenCode 1.18.18, the input-budget threshold subtracts a default reserve of up to 20,000 tokens (itself subject to the 32,000 global output cap). Small contexts without an input budget use the context minus output threshold. These are local compaction policies, not claims about server input limits. Explicit model limits, a global output override and custom `compaction.reserved` can change the assumptions and are not adjusted, so compaction cannot be guaranteed with explicit settings. Compaction also depends on reported usage and being enabled, may lose detail, and cannot prevent every oversized request.
 
-Tool calling is enabled by default for all models, but support is not verified for every model; configure `tool_call: false` explicitly for models that do not support it. Other defaults are conservative: text-only, no reasoning. No pricing, vision or reasoning capabilities are inferred.
+Tool calling is enabled by default for all models, but support is not verified for every model; configure `tool_call: false` explicitly for models that do not support it. Image input is enabled only for the models listed under Image Input; all other models remain text-only. No pricing or reasoning capabilities are inferred.
 
 ## Development
 

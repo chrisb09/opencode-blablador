@@ -42,6 +42,44 @@ describe("discovery", () => {
       expect(models["Swift-1.5-Qwen3.8-27B"].limit).toEqual(expected);
     }
   });
+  test("advertises image input for verified multimodal models", async () => {
+    const ids = [
+      "01 - GPT-OSS-120b - an open model released by OpenAI in August 2025",
+      "02 - Qwen3.8-Flash-Next-NVFP4, general purpose large model",
+      "07 - Qwen3.8-27B-FP8 - Multimodal model from Aug 2026",
+      "15 - DeepSeek-V4.1-Flash on JUWELS Booster",
+      "80 - MiMo-V2.6-Flash-RL on Juwels Booster",
+      "90 - Glm-5.3-Flash on Juwels Booster",
+      "90 - Kimi-K3 1M on Juwels Booster",
+      "deepseek-v4.1-flash-at-hzdr",
+      "Muse-Spark-Open-816B-A42B - Built with Muse Spark Open",
+      "Swift-Qwen3.8-27b",
+    ];
+    const models = await discoverModels("https://example.test", "x", async () => Response.json({ data: ids.map((id) => ({ id })) }));
+    const vision = ["Qwen3.8-Flash-Next-NVFP4", "Qwen3.8-27B-FP8", "DeepSeek-V4.1-Flash-1017", "MiMo-V2.6-Flash-RL", "GLM-5.3-Flash", "DeepSeek-V4.1-Flash-HZDR", "Muse-Spark-Open-816B-A42B", "Swift-1.5-Qwen3.8-27B"];
+    for (const alias of vision) {
+      expect(models[alias].attachment).toBe(true);
+      expect(models[alias].modalities).toEqual({ input: ["text", "image"], output: ["text"] });
+    }
+    for (const alias of ["GPT-OSS-120B", "Kimi-K3-1M"]) {
+      expect(models[alias].attachment).toBeUndefined();
+      expect(models[alias].modalities).toBeUndefined();
+    }
+  });
+
+  test("falls back to max_input_tokens for OpenAI-style model metadata", async () => {
+    const cases: Array<[Record<string, unknown>, string, object]> = [
+      [{ id: "deepseek-v4.1-flash-at-hzdr", max_input_tokens: 1048576, max_output_tokens: 1048576 }, "DeepSeek-V4.1-Flash-HZDR", { context: 1048576, input: 838860, output: 65536 }],
+      [{ id: "Swift-Qwen3.8-27b", max_model_len: 0, max_input_tokens: 32768 }, "Swift-1.5-Qwen3.8-27B", { context: 32768, input: 26214, output: 6553 }],
+      [{ id: "Muse-Spark-Open-816B-A42B - Built with Muse Spark Open", max_model_len: "1048576", max_input_tokens: -1 }, "Muse-Spark-Open-816B-A42B", { context: 8192, output: 1638 }],
+      [{ id: "Swift-Qwen3.8-27b", max_model_len: 4096, max_input_tokens: 262144 }, "Swift-1.5-Qwen3.8-27B", { context: 4096, output: 819 }],
+    ];
+    for (const [item, alias, expected] of cases) {
+      const models = await discoverModels("https://example.test", "x", async () => Response.json({ data: [item] }));
+      expect(models[alias].limit).toEqual(expected);
+    }
+  });
+
   test("prefers valid advertised output and uses model-specific fallbacks", async () => {
     const id = "90 - Kimi-K3 1M on Juwels Booster";
     for (const [advertised, expected] of [[50000, 50000], [1, 1], [100000, 65536], [0, 65536], [-1, 65536], [1.5, 65536], ["50000", 65536], [null, 65536], [Number.MAX_SAFE_INTEGER + 1, 65536]] as const) {
@@ -181,7 +219,7 @@ describe("plugin", () => {
     process.env.BLABLADOR_API_KEY = "env-test";
     globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
       expect(new Headers(init?.headers).get("authorization")).toBe("Bearer stored-test");
-      return Response.json({ data: [{ id: "Swift-Qwen3.8-27b" }, { id: "deepseek-v4.1-flash-at-hzdr" }] });
+      return Response.json({ data: [{ id: "Swift-Qwen3.8-27b" }, { id: "deepseek-v4.1-flash-at-hzdr", max_input_tokens: 1048576, max_output_tokens: 1048576 }] });
     }) as typeof fetch;
     try {
       const hooks = await plugin({} as never);
@@ -192,10 +230,30 @@ describe("plugin", () => {
       expect(cfg.provider.blablador.models["Swift-1.5-Qwen3.8-27B"].limit).toEqual({ context: 32000, input: 20000, output: 8192 });
       expect((cfg.provider.blablador.models["Swift-1.5-Qwen3.8-27B"] as { id?: string }).id).toBe("Swift-Qwen3.8-27b");
       expect(Object.keys(cfg.provider.blablador.models)).toContain("DeepSeek-V4.1-Flash-HZDR");
+      expect(cfg.provider.blablador.models["DeepSeek-V4.1-Flash-HZDR"].limit).toEqual({ context: 1048576, input: 838860, output: 65536 });
+      expect(cfg.provider.blablador.models["DeepSeek-V4.1-Flash-HZDR"].attachment).toBe(true);
+      expect(cfg.provider.blablador.models["DeepSeek-V4.1-Flash-HZDR"].modalities).toEqual({ input: ["text", "image"], output: ["text"] });
     } finally {
       globalThis.fetch = oldFetch;
       if (oldContent === undefined) delete process.env.OPENCODE_AUTH_CONTENT; else process.env.OPENCODE_AUTH_CONTENT = oldContent;
       if (oldEnv === undefined) delete process.env.BLABLADOR_API_KEY; else process.env.BLABLADOR_API_KEY = oldEnv;
+    }
+  });
+
+  test("lets explicit model settings disable discovered image input", async () => {
+    const oldContent = process.env.OPENCODE_AUTH_CONTENT;
+    const oldFetch = globalThis.fetch;
+    process.env.OPENCODE_AUTH_CONTENT = JSON.stringify({ blablador: { type: "api", key: "stored-test" } });
+    globalThis.fetch = (async () => Response.json({ data: [{ id: "07 - Qwen3.8-27B-FP8 - Multimodal model from Aug 2026" }] })) as typeof fetch;
+    try {
+      const hooks = await plugin({} as never);
+      const cfg = { provider: { blablador: { models: { "Qwen3.8-27B-FP8": { attachment: false, modalities: { input: ["text"], output: ["text"] } } } } } };
+      await hooks.config!(cfg);
+      expect(cfg.provider.blablador.models["Qwen3.8-27B-FP8"].attachment).toBe(false);
+      expect(cfg.provider.blablador.models["Qwen3.8-27B-FP8"].modalities).toEqual({ input: ["text"], output: ["text"] });
+    } finally {
+      globalThis.fetch = oldFetch;
+      if (oldContent === undefined) delete process.env.OPENCODE_AUTH_CONTENT; else process.env.OPENCODE_AUTH_CONTENT = oldContent;
     }
   });
 
