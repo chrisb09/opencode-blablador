@@ -129,7 +129,7 @@ Add the plugin entry to the `plugin` array in your OpenCode configuration. The p
 }
 ```
 
-OpenCode installs and caches the tarball with its npm-compatible plugin loader. Pin a specific version by replacing `latest/download` with `download/v0.3.0` (see [releases](https://github.com/chrisb09/opencode-blablador/releases)). Authenticate with `/connect` and select **Blablador API key**, or set `BLABLADOR_API_KEY` in OpenCode's environment. Restart OpenCode after connecting so discovery runs with the new key.
+OpenCode installs and caches the tarball with its npm-compatible plugin loader. Pin a specific version by replacing `latest/download` with `download/v0.4.0` (see [releases](https://github.com/chrisb09/opencode-blablador/releases)). Authenticate with `/connect` and select **Blablador API key**, or set `BLABLADOR_API_KEY` in OpenCode's environment. Restart OpenCode after connecting so discovery runs with the new key.
 
 To opt out of the default `responses` transport (for example to drop the `@ai-sdk/openai` dependency, or for image input with DeepSeek-V4.1-Flash-1017), pass the plugin option or the environment variable:
 
