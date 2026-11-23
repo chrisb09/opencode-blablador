@@ -28,6 +28,19 @@ const VISION_MODELS = new Set([
   "Swift-1.5-Qwen3.8-27B",
 ]);
 
+export type Transport = "chat-completions" | "responses";
+
+// Blablador's /v1/responses is the only endpoint that reports prompt-cache usage
+// for most of its models: on /v1/chat/completions the backends omit
+// prompt_tokens_details entirely. Default to responses; chat-completions is the
+// opt-out. Only the responses shim imports @ai-sdk/openai, so the opt-out path
+// carries no runtime dependency.
+export function transportFrom(options: Record<string, unknown> | undefined, env: NodeJS.ProcessEnv): Transport {
+  const raw = options?.transport ?? (env.BLABLADOR_TRANSPORT?.trim() || undefined) ?? "responses";
+  if (raw !== "chat-completions" && raw !== "responses") throw new Error("Invalid Blablador transport");
+  return raw;
+}
+
 type DiscoveredModel = {
   id: string;
   name: string;

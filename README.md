@@ -2,6 +2,8 @@
 
 OpenCode plugin for the OpenAI-compatible Blablador API. It discovers a selected set of models from `/v1/models` on startup and gives them short OpenCode IDs while preserving their advertised API IDs.
 
+By default the plugin routes requests through Blablador's `/v1/responses` endpoint, which is the only endpoint that reports prompt-cache usage for most of its models; the `responses` transport depends on `@ai-sdk/openai`. The opt-out `chat-completions` transport has no runtime dependency. See [Prompt caching](#prompt-caching) for the measurements and the per-model caveats.
+
 This plugin targets OpenCode v1. **OpenCode v2 is not supported.** A separate v2 plugin would need to implement the v2 plugin contract and catalog transformations for discovery and model limits; the v1 request hooks used here are not available there. In the v2 runtime inspected, catalog output limits do not reliably set the request cap for OpenAI-compatible chat, so equivalent behavior also needs a supported request-generation hook or a runtime change. This is a plan, not shipped compatibility.
 
 ## Model Performance
@@ -96,6 +98,26 @@ The plugin sets `attachment: true` and input modalities `text`/`image` only for 
 
 The list comes from live endpoint tests with digit and blank images, not from provider documentation. Other Blablador models that accepted images in the same tests include `MedGemma`, `alias-ocr`, `Qwen3.8-27B` (90), `Qwen3.8-Flash-Next-125B-AWQ-W4A16`, `HyperArete-27B`, `MiMo-V2.6-Pro-RL`, and `Mistral 4 Large`; `Aleph Kolibri`, `Hydrogen 1.0`, `EVE-Instruct`, and `HyperQwen-27B` rejected them. An explicit per-model `attachment` or `modalities` setting overrides the discovered capability.
 
+## Prompt caching
+
+Blablador prefix-caches prompts on its backends, but the paths that *report* cache reuse differ per endpoint and model. OpenCode records `input_tokens_details.cached_tokens` (Responses) or `prompt_tokens_details.cached_tokens` (Chat Completions) as cache-read tokens, so a transport that omits the field shows 0% reuse even when caching happens. Live probes on 2026-11-23 (identical repeated ~6k-token prefix, `/v1/chat/completions` vs `/v1/responses`) found:
+
+- **6 of the 10 selected models report cache tokens only on `/v1/responses`; on `/v1/chat/completions` they omit the field entirely.** GPT-OSS-120B, Qwen3.8-Flash-Next, Qwen3.8-27B, DeepSeek-V4.1-Flash-1017, MiMo-V2.6-Flash-RL, and Muse-Spark-Open reported `cached_tokens` on `/responses` (≈7.7k–8.7k on a warmed 6k-word prefix) but no `prompt_tokens_details` on Chat Completions.
+- **GLM-5.3-Flash, DeepSeek-V4.1-Flash-HZDR, and Swift-Qwen3.8-27B report on both endpoints;** they work under either transport (subject to normal replica variance — a repeated prefix sometimes lands on a cold copy and reports 0).
+- **Kimi-K3-1M reports `cached_tokens: 0` on every endpoint and never speeds up on a repeated prefix** (flat time-to-first-token across 12 repeats on `/responses` and `/chat/completions`). That deployment appears to have prefix caching disabled, which no client-side setting can change. If Kimi cache reuse matters, use a provider that caches it: OpenRouter's `moonshotai/kimi-k3.1-pro` reported `cached_tokens` on a warmed prefix in the same tests.
+- Blablador's `/v1/messages` (Anthropic-compatible) does not help: it returns no cache fields for Kimi, and for caching models it returns zero `cache_read_input_tokens` with no speedup.
+
+Because of this, the plugin defaults to the `responses` transport; it reports cache reuse for 9 of the 10 selected models (all but Kimi), including under the three models that also report on Chat Completions.
+
+### Transport selection
+
+Set `transport` in the plugin options, or the `BLABLADOR_TRANSPORT` environment variable, to choose the endpoint:
+
+- `responses` (default): routes through `/v1/responses` via a bundled shim. It reports cache reuse for 9 of the 10 selected models. The shim flattens text-only message content to plain strings and forces `store: false`, because Blablador rejects OpenAI `item_reference` items and the DeepSeek-V4.1-Flash deployment rejects `input_text` parts. Native reasoning replay that lacks encrypted content is skipped, matching the stateless request style.
+- `chat-completions`: keeps the original `@ai-sdk/openai-compatible` backend with no extra dependency. Cache reuse is reported only for DeepSeek-V4.1-Flash-HZDR and Swift-Qwen3.8-27B.
+
+A non-default value that is not one of these two names produces a warning and falls back to `responses`. The plugin-only `transport` option is stripped before the SDK sees provider options. Vision (image input) through `/v1/responses` depends on the backend: it works for most vision models, but the DeepSeek-V4.1-Flash-1017 deployment rejects image parts on this endpoint even though it accepts them on Chat Completions, so use `chat-completions` for image input with that model.
+
 ## Setup
 
 Add the plugin entry to the `plugin` array in your OpenCode configuration. The package is distributed as a GitHub release asset, not through the npm registry, so no npm account is needed. Use the latest release tarball URL:
@@ -108,6 +130,19 @@ Add the plugin entry to the `plugin` array in your OpenCode configuration. The p
 ```
 
 OpenCode installs and caches the tarball with its npm-compatible plugin loader. Pin a specific version by replacing `latest/download` with `download/v0.3.0` (see [releases](https://github.com/chrisb09/opencode-blablador/releases)). Authenticate with `/connect` and select **Blablador API key**, or set `BLABLADOR_API_KEY` in OpenCode's environment. Restart OpenCode after connecting so discovery runs with the new key.
+
+To opt out of the default `responses` transport (for example to drop the `@ai-sdk/openai` dependency, or for image input with DeepSeek-V4.1-Flash-1017), pass the plugin option or the environment variable:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    ["https://github.com/chrisb09/opencode-blablador/releases/latest/download/opencode-blablador.tgz", { "transport": "chat-completions" }]
+  ]
+}
+```
+
+Alternatively set `BLABLADOR_TRANSPORT=chat-completions` in OpenCode's environment. See [Transport selection](#transport-selection) for what each transport reports.
 
 Choose a discovered `blablador/<short-id>` in the model picker, for example `blablador/Qwen3.8-Flash-Next-NVFP4`. The picker shows `Qwen3.8-Flash-Next-NVFP4 (Blablador)` while requests use the exact ID advertised by Blablador. Existing sessions and default model settings using the old IDs need to select the new IDs. Discovery makes one request with a five-second timeout and no retries. Failure, including invalid credentials or an unavailable endpoint, produces a sanitized warning; missing credentials are quiet. When discovery is empty or unavailable and no models are configured, the plugin registers a `Kimi-K3-1M` bootstrap with the published API ID `99 - Kimi-K3-1M - our best (and slowest) model as of August 2026` so the provider appears in `/connect`. This API ID may be stale and is intended for authentication only; it does not guarantee inference will work. Successful discovery replaces the bootstrap with live IDs. This plugin does not store keys itself: OpenCode manages login credentials. Since the plugin SDK does not expose stored credentials during configuration, discovery reads OpenCode's existing `auth.json` (or `OPENCODE_AUTH_CONTENT`) at runtime. A configured `provider.blablador.options.apiKey` takes precedence, followed by OpenCode's stored key and then `BLABLADOR_API_KEY`.
 
@@ -137,4 +172,4 @@ bun test
 bun run build
 ```
 
-The build produces `dist/index.js`. Regenerate the capability chart after editing its data with `node generate-capability-chart.mjs`. For local integration, point an OpenCode project's plugin entry at `file:///rwthfs/rz/cluster/home/ro092286/git/opencode-blablador/dist/index.js` after building; the package has not been published. Unit tests use synthetic data and do not contact Blablador or access credential files.
+The build produces `dist/index.js` plus the Responses shim `dist/v1-responses.js`, which the default transport loads as the provider `npm` via a `file://` URL. Regenerate the capability chart after editing its data with `node generate-capability-chart.mjs`. For local integration, point an OpenCode project's plugin entry at `file:///rwthfs/rz/cluster/home/ro092286/git/opencode-blablador/dist/index.js` after building; the package has not been published. Unit tests use synthetic data and do not contact Blablador or access credential files.

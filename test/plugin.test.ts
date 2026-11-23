@@ -315,4 +315,95 @@ describe("plugin", () => {
       if (oldEnv === undefined) delete process.env.BLABLADOR_API_KEY; else process.env.BLABLADOR_API_KEY = oldEnv;
     }
   });
+
+  test("defaults to the responses shim and selects chat-completions on opt-out", async () => {
+    const oldContent = process.env.OPENCODE_AUTH_CONTENT;
+    const oldEnv = process.env.BLABLADOR_API_KEY;
+    const oldTransport = process.env.BLABLADOR_TRANSPORT;
+    const oldFetch = globalThis.fetch;
+    process.env.OPENCODE_AUTH_CONTENT = JSON.stringify({ blablador: { type: "api", key: "stored-test" } });
+    delete process.env.BLABLADOR_API_KEY;
+    delete process.env.BLABLADOR_TRANSPORT;
+    globalThis.fetch = (async () => Response.json({ data: [] })) as typeof fetch;
+    try {
+      const hooks = await plugin({} as never);
+
+      const fallback: import("@opencode-ai/sdk").Config = {};
+      await hooks.config!(fallback);
+      expect(fallback.provider!.blablador!.npm).toMatch(/^file:\/\/.*\/(src|dist)\/v1-responses\.js$/);
+
+      const explicit: import("@opencode-ai/sdk").Config = { provider: { blablador: { options: { transport: "responses" } } } };
+      await hooks.config!(explicit);
+      expect(explicit.provider!.blablador!.npm).toMatch(/^file:\/\/.*\/(src|dist)\/v1-responses\.js$/);
+
+      const chat: import("@opencode-ai/sdk").Config = { provider: { blablador: { options: { transport: "chat-completions" } } } };
+      await hooks.config!(chat);
+      expect(chat.provider!.blablador!.npm).toBe("@ai-sdk/openai-compatible");
+      expect("transport" in chat.provider!.blablador!.options!).toBe(false);
+
+      process.env.BLABLADOR_TRANSPORT = "chat-completions";
+      const env: import("@opencode-ai/sdk").Config = { provider: { blablador: { options: {} } } };
+      await hooks.config!(env);
+      expect(env.provider!.blablador!.npm).toBe("@ai-sdk/openai-compatible");
+    } finally {
+      globalThis.fetch = oldFetch;
+      if (oldContent === undefined) delete process.env.OPENCODE_AUTH_CONTENT; else process.env.OPENCODE_AUTH_CONTENT = oldContent;
+      if (oldEnv === undefined) delete process.env.BLABLADOR_API_KEY; else process.env.BLABLADOR_API_KEY = oldEnv;
+      if (oldTransport === undefined) delete process.env.BLABLADOR_TRANSPORT; else process.env.BLABLADOR_TRANSPORT = oldTransport;
+    }
+  });
+
+  test("warns and falls back to responses for an invalid transport", async () => {
+    const oldContent = process.env.OPENCODE_AUTH_CONTENT;
+    const oldFetch = globalThis.fetch;
+    const oldWarn = console.warn;
+    const warn = mock(() => {});
+    console.warn = warn;
+    process.env.OPENCODE_AUTH_CONTENT = JSON.stringify({ blablador: { type: "api", key: "stored-test" } });
+    globalThis.fetch = (async () => Response.json({ data: [] })) as typeof fetch;
+    try {
+      const hooks = await plugin({} as never);
+      const cfg: import("@opencode-ai/sdk").Config = { provider: { blablador: { options: { transport: "grpc" } } } };
+      await hooks.config!(cfg);
+      expect(cfg.provider!.blablador!.npm).toMatch(/^file:\/\/.*\/(src|dist)\/v1-responses\.js$/);
+      expect(warn).toHaveBeenCalledWith("Invalid Blablador transport; using the responses transport.");
+    } finally {
+      globalThis.fetch = oldFetch;
+      console.warn = oldWarn;
+      if (oldContent === undefined) delete process.env.OPENCODE_AUTH_CONTENT; else process.env.OPENCODE_AUTH_CONTENT = oldContent;
+    }
+  });
 });
+
+describe("responses shim", () => {
+  test("routes languageModel to the OpenAI Responses API", async () => {
+    const { createBlabladorResponses } = await import("../src/v1-responses.js");
+    const sdk = createBlabladorResponses({ apiKey: "key", baseURL: "http://127.0.0.1:9/v1", name: "blablador" });
+    const model = sdk.languageModel("DeepSeek-V4.1-Flash-1017");
+    expect(model.specificationVersion).toBe("v3");
+    expect(typeof model.doStream).toBe("function");
+  });
+
+  test("forces store:false, lifts providerName options, and normalizes the request body", async () => {
+    const { createBlabladorResponses } = await import("../src/v1-responses.js");
+    let seenBody: Record<string, unknown> | undefined;
+    const sdk = createBlabladorResponses({
+      apiKey: "key", baseURL: "https://example.test/v1", name: "blablador",
+      fetch: async (input: string | URL | Request, init?: RequestInit) => {
+        const raw = init && typeof init.body === "string" ? init.body : await (input as Request).text();
+        seenBody = JSON.parse(raw);
+        return new Response("event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"r\",\"object\":\"response\",\"created_at\":0,\"model\":\"m\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2}}}\n\n", { headers: { "content-type": "text/event-stream" } });
+      },
+    });
+    const model = sdk.languageModel("m");
+    await model.doStream({
+      prompt: [{ role: "user", content: [{ type: "text", text: "hi" }] }],
+      providerOptions: { blablador: { reasoning: "high" }, openai: { foo: 1 } },
+    } as never);
+    // stateless() forces store:false on the wire even though the caller omitted it.
+    expect(seenBody?.store).toBe(false);
+    // normalizeResponsesBody flattens the text-only content array to a string.
+    expect(seenBody?.input).toEqual([{ role: "user", content: "hi" }]);
+  });
+});
+

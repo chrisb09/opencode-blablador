@@ -20,6 +20,6 @@
   "files": ["dist", "README.md", "assets"],
   "engines": { "node": ">=20" },
   "scripts": { "build": "tsc -p tsconfig.json", "test": "bun test", "prepack": "npm run build", "prepublishOnly": "npm run build" },
-  "dependencies": { "@opencode-ai/plugin": "1.18.18" },
+  "dependencies": { "@ai-sdk/openai": "^3.0.88", "@opencode-ai/plugin": "1.18.18" },
   "devDependencies": { "@types/node": "^22.0.0", "typescript": "^5.0.0" }
 }

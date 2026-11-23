@@ -2,10 +2,11 @@ import type { Plugin } from "@opencode-ai/plugin";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { discoverModels, DiscoveryHttpError, modelLimit } from "./models.js";
+import { discoverModels, DiscoveryHttpError, modelLimit, transportFrom } from "./models.js";
 
 const BASE_URL = "https://api.blablador.fz-juelich.de/v1";
 const BOOTSTRAP_ID = "99 - Kimi-K3-1M - our best (and slowest) model as of August 2026";
+const responsesNpm = new URL("./v1-responses.js", import.meta.url).href;
 
 // The plugin SDK has no auth-read API during config; use OpenCode's own store,
 // without writing a second copy. OPENCODE_AUTH_CONTENT takes precedence there.
@@ -32,6 +33,13 @@ const plugin: Plugin = async () => ({
     const options = existing.options ?? {};
     const baseURL = typeof options.baseURL === "string" ? options.baseURL : BASE_URL;
     const apiKey = typeof options.apiKey === "string" ? options.apiKey : (await storedKey()) || process.env.BLABLADOR_API_KEY;
+    let transport: "chat-completions" | "responses" = "responses";
+    try {
+      transport = transportFrom(options, process.env);
+    } catch {
+      console.warn("Invalid Blablador transport; using the responses transport.");
+    }
+    const { transport: _transport, ...sdkOptions } = options as Record<string, unknown>;
     let discovered: Awaited<ReturnType<typeof discoverModels>> = {};
     if (apiKey) {
       try {
@@ -51,10 +59,10 @@ const plugin: Plugin = async () => ({
     }
     cfg.provider.blablador = {
       name: "Blablador",
-      npm: "@ai-sdk/openai-compatible",
       env: ["BLABLADOR_API_KEY"],
       ...existing,
-      options: { baseURL, ...options },
+      npm: transport === "responses" ? responsesNpm : "@ai-sdk/openai-compatible",
+      options: { ...sdkOptions, baseURL },
       models,
     };
   },
