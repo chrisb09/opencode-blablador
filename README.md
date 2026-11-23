@@ -113,10 +113,10 @@ Because of this, the plugin defaults to the `responses` transport; it reports ca
 
 Set `transport` in the plugin options, or the `BLABLADOR_TRANSPORT` environment variable, to choose the endpoint:
 
-- `responses` (default): routes through `/v1/responses` via a bundled shim. It reports cache reuse for 9 of the 10 selected models. The shim flattens text-only message content to plain strings and forces `store: false`, because Blablador rejects OpenAI `item_reference` items and the DeepSeek-V4.1-Flash deployment rejects `input_text` parts. Native reasoning replay that lacks encrypted content is skipped, matching the stateless request style.
+- `responses` (default): routes through `/v1/responses` via a bundled shim. It reports cache reuse for 9 of the 10 selected models. The shim flattens text-only message content to plain strings, adds `detail: "auto"` to images, splits mixed text/image messages, and forces `store: false`, because Blablador rejects OpenAI `item_reference` items, requires image `detail`, and the DeepSeek-V4.1-Flash deployment rejects `input_text` parts next to an image. Native reasoning replay that lacks encrypted content is skipped, matching the stateless request style.
 - `chat-completions`: keeps the original `@ai-sdk/openai-compatible` backend with no extra dependency. Cache reuse is reported only for DeepSeek-V4.1-Flash-HZDR and Swift-Qwen3.8-27B.
 
-A non-default value that is not one of these two names produces a warning and falls back to `responses`. The plugin-only `transport` option is stripped before the SDK sees provider options. Vision (image input) through `/v1/responses` depends on the backend: it works for most vision models, but the DeepSeek-V4.1-Flash-1017 deployment rejects image parts on this endpoint even though it accepts them on Chat Completions, so use `chat-completions` for image input with that model.
+A non-default value that is not one of these two names produces a warning and falls back to `responses`. The plugin-only `transport` option is stripped before the SDK sees provider options. Vision (image input) works on both transports. Blablador's `/v1/responses` requires a `detail` field on every image and the DeepSeek-V4.1-Flash deployment rejects `input_text` parts next to an image, so the shim adds `detail: "auto"` and splits mixed text/image messages into order-preserving items; this was verified with multi-turn sessions containing images on DeepSeek-V4.1-Flash-1017, GLM-5.3-Flash, MiMo-V2.6-Flash-RL, and Qwen3.8-Flash-Next.
 
 ## Setup
 
@@ -129,9 +129,9 @@ Add the plugin entry to the `plugin` array in your OpenCode configuration. The p
 }
 ```
 
-OpenCode installs and caches the tarball with its npm-compatible plugin loader. Pin a specific version by replacing `latest/download` with `download/v0.4.0` (see [releases](https://github.com/chrisb09/opencode-blablador/releases)). Authenticate with `/connect` and select **Blablador API key**, or set `BLABLADOR_API_KEY` in OpenCode's environment. Restart OpenCode after connecting so discovery runs with the new key.
+OpenCode installs and caches the tarball with its npm-compatible plugin loader. Pin a specific version by replacing `latest/download` with `download/v0.4.1` (see [releases](https://github.com/chrisb09/opencode-blablador/releases)). Authenticate with `/connect` and select **Blablador API key**, or set `BLABLADOR_API_KEY` in OpenCode's environment. Restart OpenCode after connecting so discovery runs with the new key.
 
-To opt out of the default `responses` transport (for example to drop the `@ai-sdk/openai` dependency, or for image input with DeepSeek-V4.1-Flash-1017), pass the plugin option or the environment variable:
+To opt out of the default `responses` transport (for example to drop the `@ai-sdk/openai` dependency), pass the plugin option or the environment variable:
 
 ```json
 {
